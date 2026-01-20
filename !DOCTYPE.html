@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>สรุปรายรับ-รายจ่ายรายเดือน</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --fade-duration: 4s;
+      --bg-blur: 3px;
+    }
+
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+
+    /* ===== Background Slideshow ===== */
+    .bg-layer {
+      position: fixed; inset: 0; z-index: -2; overflow: hidden;
+    }
+    .bg {
+      position: absolute; inset: 0;
+      background-size: cover; background-position: center; background-repeat: no-repeat;
+      opacity: 0; filter: blur(var(--bg-blur)) saturate(1.05); transform: scale(1.05);
+      transition: opacity var(--fade-duration) ease-in-out;
+    }
+    .bg.active { opacity: 1; }
+
+    .bg-overlay {
+      position: fixed; inset: 0; z-index: -1; transition: background 1.5s ease;
+    }
+    .day { background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(240,248,255,0.92)); }
+    .night { background: linear-gradient(180deg, rgba(20,25,40,0.8), rgba(10,15,30,0.9)); color: #e0e6ed; }
+
+    body {
+      font-family: 'Sarabun', system-ui, -apple-system, sans-serif;
+      padding: 10px; margin: 0;
+      min-height: 100vh; color: #1f2933;
+    }
+
+    /* Text Modes */
+    .night-mode-text h1, .night-mode-text h3 { color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+    .night-mode-text .summary, .night-mode-text .detail-box { background: #2a3441; color: #eee; border: 1px solid #445; }
+    .night-mode-text table { background: #2a3441; color: #eee; }
+    .night-mode-text th { background: #34495e; color: #ddd; border-bottom-color: #556; }
+    .night-mode-text td { border-bottom-color: #445; }
+    .night-mode-text input, .night-mode-text select { background: #3b4a5a; color: #fff; border-color: #556; }
+
+    h1 { font-size: 22px; margin: 15px 0; text-align: center; }
+    .container { max-width: 1200px; margin: auto; padding-bottom: 50px; }
+
+    /* Buttons */
+    button {
+      padding: 6px 12px; border-radius: 6px; border: none;
+      background: linear-gradient(135deg,#4f7cff,#6fa3ff); color: white;
+      cursor: pointer; font-size: 14px;
+      transition: transform .1s;
+    }
+    button:active { transform: scale(0.95); }
+    .btn-danger { background: linear-gradient(135deg,#ff5f5f,#ff8a8a); }
+    .btn-success { background: linear-gradient(135deg,#2ecc71,#27ae60); }
+    .btn-toggle { background: #6c757d; font-size: 12px; padding: 4px 8px; }
+
+    /* Table Styles */
+    .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    table { width: 100%; border-collapse: collapse; min-width: 800px; background: white; }
+    th, td { padding: 10px; text-align: center; border-bottom: 1px solid #eee; }
+    th { background: #f3f6fb; font-weight: 600; white-space: nowrap; }
+    
+    input[type="number"], input[type="text"], select {
+      width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; outline: none; text-align: center;
+    }
+    input:focus { border-color: #4f7cff; }
+
+    /* Summary & Detail */
+    .summary {
+      margin: 14px 0; padding: 15px; border-radius: 12px; background: white;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05); text-align: center; font-weight: bold; font-size: 1.1em;
+    }
+    .detail-row { display:none; background: #f9fbfd; }
+    .detail-row.show { display: table-row; }
+    .detail-box { padding: 15px; border-radius: 8px; text-align: left; border-top: 2px solid #eef; }
+
+    /* Colors */
+    .income { color: #1fa36a; font-weight: bold; }
+    .expense { color: #e04f4f; font-weight: bold; }
+    .balance-positive { color: #1fa36a; font-weight: bold; background: rgba(31,163,106,0.1); padding: 4px 8px; border-radius: 4px; }
+    .balance-negative { color: #e04f4f; font-weight: bold; background: rgba(224,79,79,0.1); padding: 4px 8px; border-radius: 4px; }
+    
+    .chart-box { background: white; padding: 15px; border-radius: 12px; margin-top: 20px; }
+    .night-mode-text .chart-box { background: #2a3441; }
+
+    /* Action Bar */
+    .action-bar { display: flex; justify-content: flex-end; margin-bottom: 10px; gap: 10px; }
+  </style>
+</head>
+<body id="mainBody">
+
+  <div class="bg-layer">
+    <div class="bg active" id="bg1"></div>
+    <div class="bg" id="bg2"></div>
+  </div>
+  <div class="bg-overlay day" id="overlay"></div>
+
+  <div class="container">
+    <h1>📅 สรุปรายรับรายจ่ายรายเดือน</h1>
+
+    <div class="action-bar">
+      <button class="btn-success" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> Export Excel</button>
+      <button class="btn-danger" onclick="clearData()"><i class="fas fa-trash"></i> ล้างข้อมูล</button>
+    </div>
+
+    <div class="table-responsive">
+      <table id="dataTable">
+        <thead>
+          <tr>
+            <th width="10%">เดือน</th>
+            <th width="12%">เงินเดือน</th>
+            <th width="12%">รายได้พิเศษ</th>
+            <th width="12%">รวมรายรับ</th>
+            <th width="12%">รวมรายจ่าย</th>
+            <th width="12%">คงเหลือ</th>
+            <th width="10%">จัดการ</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="summary" id="totalSummary">โหลดข้อมูล...</div>
+
+    <div class="summary" id="yearlyExpenseSummary" style="text-align: left;">
+      <div style="text-align:center; margin-bottom:10px; font-size:1.1em;">🏆 จัดอันดับรายจ่ายสูงสุด (ทั้งปี)</div>
+      <div id="expenseBreakdown" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px; font-weight:normal;"></div>
+    </div>
+
+    <div class="chart-box">
+      <canvas id="chart" height="200"></canvas>
+    </div>
+  </div>
+
+  <script>
+    /* ================= 1. Background System (เหมือนเดิม) ================= */
+    const backgroundImages = [
+      'DSCF1292.jpg', 'DSCF1361.jpg', 'DSCF1400.jpg',
+      'DSC00543.jpg', 'DSCF0921.jpg' // เพิ่มรูปจากชุดเก่าให้ด้วย
+    ];
+    let currentBgIndex = 0;
+    let showingFirst = true;
+    let isNight = false;
+    let sunsetTime = null;
+
+    const bgA = document.getElementById('bg1');
+    const bgB = document.getElementById('bg2');
+    const overlay = document.getElementById('overlay');
+    const body = document.getElementById('mainBody');
+
+    // Init First Image
+    bgA.style.backgroundImage = `url(${backgroundImages[0]})`;
+
+    function applyBackground(nextIndex) {
+      currentBgIndex = (nextIndex + backgroundImages.length) % backgroundImages.length;
+      const nextImage = backgroundImages[currentBgIndex];
+      const show = showingFirst ? bgB : bgA;
+      const hide = showingFirst ? bgA : bgB;
+      show.style.backgroundImage = `url(${nextImage})`;
+      show.classList.add('active');
+      hide.classList.remove('active');
+      showingFirst = !showingFirst;
+    }
+    setInterval(() => applyBackground(currentBgIndex + 1), 6000); // เปลี่ยนทุก 6 วิ
+
+    // Geolocation Sunset
+    function fetchSunset() {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(pos => {
+        const { latitude, longitude } = pos.coords;
+        fetch(`https://api.sunrise-sunset.org/json?lat=${latitude}&lng=${longitude}&formatted=0`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'OK') {
+              sunsetTime = new Date(data.results.sunset);
+              updateDayNight();
+            }
+          }).catch(() => {});
+      });
+    }
+    function updateDayNight() {
+      if (!sunsetTime) return;
+      const now = new Date();
+      const night = now >= sunsetTime;
+      if (night !== isNight) {
+        isNight = night;
+        overlay.className = `bg-overlay ${isNight ? 'night' : 'day'}`;
+        if(isNight) body.classList.add('night-mode-text');
+        else body.classList.remove('night-mode-text');
+      }
+    }
+    fetchSunset();
+    setInterval(updateDayNight, 600000);
+
+    /* ================= 2. App Logic (Yearly + LocalStorage) ================= */
+    const months = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+    
+    // Data Structure: Array 12 เดือน
+    let monthlyData = JSON.parse(localStorage.getItem('yearlyBudget_v1')) || initData();
+
+    function initData() {
+      return months.map(m => ({
+        salary: 0,
+        extra: 0,
+        details: [] // { type: 'income'/'expense', desc: '', amount: 0 }
+      }));
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("tableBody");
+      tbody.innerHTML = "";
+
+      monthlyData.forEach((data, index) => {
+        // Calculate Totals per month
+        const detailIncome = data.details.filter(d => d.type === 'income').reduce((sum, d) => sum + (Number(d.amount)||0), 0);
+        const detailExpense = data.details.filter(d => d.type === 'expense').reduce((sum, d) => sum + (Number(d.amount)||0), 0);
+        
+        const totalIncome = (Number(data.salary)||0) + (Number(data.extra)||0) + detailIncome;
+        const totalExpense = detailExpense;
+        const balance = totalIncome - totalExpense;
+
+        // Main Row
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><b>${months[index]}</b></td>
+          <td><input type="number" min="0" value="${data.salary||''}" onchange="updateSalary(${index}, this.value)" placeholder="0"></td>
+          <td><input type="number" min="0" value="${data.extra||''}" onchange="updateExtra(${index}, this.value)" placeholder="0" class="income"></td>
+          <td class="income">${totalIncome.toLocaleString()}</td>
+          <td class="expense">${totalExpense.toLocaleString()}</td>
+          <td><span class="${balance >= 0 ? 'balance-positive' : 'balance-negative'}">${balance.toLocaleString()}</span></td>
+          <td><button class="btn-toggle" onclick="toggleDetail(${index})"><i class="fas fa-list"></i> รายละเอียด</button></td>
+        `;
+
+        // Detail Row
+        const trDetail = document.createElement("tr");
+        trDetail.id = `detail-row-${index}`;
+        trDetail.className = "detail-row";
+        
+        let detailHtml = `
+          <td colspan="7">
+            <div class="detail-box">
+              <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                <b>📝 รายละเอียดเพิ่มเติม (${months[index]})</b>
+              </div>
+              <table style="width:100%; margin-bottom:10px; background:rgba(0,0,0,0.02);">
+                ${data.details.map((d, dIndex) => `
+                  <tr>
+                    <td width="20%">
+                      <select onchange="updateDetail(${index}, ${dIndex}, 'type', this.value)">
+                        <option value="income" ${d.type==='income'?'selected':''}>รายรับ (+)</option>
+                        <option value="expense" ${d.type==='expense'?'selected':''}>รายจ่าย (-)</option>
+                      </select>
+                    </td>
+                    <td width="40%"><input type="text" value="${d.desc}" onchange="updateDetail(${index}, ${dIndex}, 'desc', this.value)" placeholder="รายการ..."></td>
+                    <td width="25%"><input type="number" value="${d.amount}" onchange="updateDetail(${index}, ${dIndex}, 'amount', this.value)" placeholder="บาท"></td>
+                    <td width="15%"><button class="btn-danger" style="padding:4px 8px;" onclick="removeDetail(${index}, ${dIndex})"><i class="fas fa-times"></i></button></td>
+                  </tr>
+                `).join('')}
+              </table>
+              <button class="btn-success" style="font-size:12px" onclick="addDetail(${index}, 'income')">+ รายรับ</button>
+              <button class="btn-danger" style="font-size:12px" onclick="addDetail(${index}, 'expense')">- รายจ่าย</button>
+            </div>
+          </td>
+        `;
+        trDetail.innerHTML = detailHtml;
+
+        tbody.appendChild(tr);
+        tbody.appendChild(trDetail);
+      });
+
+      updateSummaryAndChart();
+    }
+
+    /* === Data Updating Functions === */
+    function updateSalary(idx, val) { monthlyData[idx].salary = Number(val); saveData(); renderTable(); }
+    function updateExtra(idx, val) { monthlyData[idx].extra = Number(val); saveData(); renderTable(); }
+
+    function toggleDetail(index) {
+      const row = document.getElementById(`detail-row-${index}`);
+      row.classList.toggle('show');
+    }
+
+    function addDetail(monthIdx, type) {
+      monthlyData[monthIdx].details.push({ type, desc: '', amount: 0 });
+      saveData();
+      renderTable();
+      // Keep detail open
+      setTimeout(() => document.getElementById(`detail-row-${monthIdx}`).classList.add('show'), 50);
+    }
+
+    function updateDetail(monthIdx, detailIdx, field, val) {
+      monthlyData[monthIdx].details[detailIdx][field] = field === 'amount' ? Number(val) : val;
+      saveData();
+      renderTable();
+      setTimeout(() => document.getElementById(`detail-row-${monthIdx}`).classList.add('show'), 50);
+    }
+
+    function removeDetail(monthIdx, detailIdx) {
+      monthlyData[monthIdx].details.splice(detailIdx, 1);
+      saveData();
+      renderTable();
+      setTimeout(() => document.getElementById(`detail-row-${monthIdx}`).classList.add('show'), 50);
+    }
+
+    function saveData() {
+      localStorage.setItem('yearlyBudget_v1', JSON.stringify(monthlyData));
+    }
+    
+    function clearData() {
+      if(confirm('ล้างข้อมูลทั้งหมดหรือไม่?')) {
+        monthlyData = initData();
+        saveData();
+        renderTable();
+      }
+    }
+
+    /* === Summary & Chart === */
+    let myChart = null;
+    function updateSummaryAndChart() {
+      let grandTotalIncome = 0;
+      let grandTotalExpense = 0;
+      const expenseMap = {};
+      const chartLabels = months;
+      const chartIncome = [];
+      const chartExpense = [];
+
+      monthlyData.forEach(m => {
+        const dIncome = m.details.filter(d=>d.type==='income').reduce((s,d)=>s+(Number(d.amount)||0),0);
+        const dExpense = m.details.filter(d=>d.type==='expense').reduce((s,d)=>s+(Number(d.amount)||0),0);
+        
+        // Collect Expense Categories
+        m.details.filter(d=>d.type==='expense').forEach(d => {
+          const name = d.desc.trim() || 'ไม่ระบุ';
+          expenseMap[name] = (expenseMap[name] || 0) + Number(d.amount);
+        });
+
+        const mIncome = (Number(m.salary)||0) + (Number(m.extra)||0) + dIncome;
+        const mExpense = dExpense;
+
+        grandTotalIncome += mIncome;
+        grandTotalExpense += mExpense;
+        chartIncome.push(mIncome);
+        chartExpense.push(mExpense);
+      });
+
+      // Update Text Summary
+      document.getElementById("totalSummary").innerHTML = 
+        `<span style="color:#1fa36a">รับรวม: ${grandTotalIncome.toLocaleString()}</span> | ` +
+        `<span style="color:#e04f4f">จ่ายรวม: ${grandTotalExpense.toLocaleString()}</span> | ` +
+        `คงเหลือสุทธิ: ${(grandTotalIncome - grandTotalExpense).toLocaleString()}`;
+
+      // Update Expense Breakdown
+      const breakdownEl = document.getElementById('expenseBreakdown');
+      const sortedExpenses = Object.entries(expenseMap).sort((a,b)=>b[1]-a[1]);
+      if(sortedExpenses.length === 0) breakdownEl.innerHTML = "<i>ยังไม่มีรายการรายจ่าย</i>";
+      else {
+        breakdownEl.innerHTML = sortedExpenses.map(([name, val]) => 
+          `<div style="background:rgba(0,0,0,0.05); padding:5px 10px; border-radius:4px; font-size:0.9em;">
+             ${name}: <b>${val.toLocaleString()}</b>
+           </div>`
+        ).join('');
+      }
+
+      // Draw Chart (Bar Chart is better for monthly comparison)
+      const ctx = document.getElementById('chart').getContext('2d');
+      if (myChart) myChart.destroy();
+      
+      const isDark = document.body.classList.contains('night-mode-text');
+      Chart.defaults.color = isDark ? '#ddd' : '#666';
+
+      myChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: chartLabels,
+          datasets: [
+            { label: 'รายรับ', data: chartIncome, backgroundColor: '#2ecc71', borderRadius: 4 },
+            { label: 'รายจ่าย', data: chartExpense, backgroundColor: '#e74c3c', borderRadius: 4 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true, grid: { color: isDark?'#444':'#eee' } },
+            x: { grid: { display: false } }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                    let label = context.dataset.label || '';
+                    if (label) { label += ': '; }
+                    if (context.parsed.y !== null) { label += context.parsed.y.toLocaleString() + ' บาท'; }
+                    return label;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    /* === Export Excel === */
+    function exportToExcel() {
+      let csv = "\uFEFFเดือน,ประเภท,รายการ,จำนวนเงิน\n";
+      
+      monthlyData.forEach((m, idx) => {
+        const monthName = months[idx];
+        if(m.salary > 0) csv += `${monthName},รายรับ,เงินเดือน,${m.salary}\n`;
+        if(m.extra > 0) csv += `${monthName},รายรับ,รายได้พิเศษ,${m.extra}\n`;
+        
+        m.details.forEach(d => {
+          csv += `${monthName},${d.type==='income'?'รายรับ':'รายจ่าย'},${d.desc.replace(/,/g,' ')},${d.amount}\n`;
+        });
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Budget_Yearly_${new Date().getFullYear()}.csv`;
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    }
+
+    // Init Render
+    renderTable();
+
+  </script>
+</body>
+</html>
